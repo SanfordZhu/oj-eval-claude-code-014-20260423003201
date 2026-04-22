@@ -7,8 +7,75 @@
 #include <iomanip>
 #include <cmath>
 #include <stdexcept>
+#include <algorithm>
+#include <cctype>
 
 using namespace antlr4;
+
+// Big integer helper functions
+static bool isIntegerString(const std::string& s) {
+    if (s.empty()) return false;
+    // Check if all characters are digits (positive integer)
+    return s.find_first_not_of("0123456789") == std::string::npos;
+}
+
+static std::string addIntegerStrings(const std::string& a, const std::string& b) {
+    // Simple implementation for positive integers
+    std::string result;
+    int carry = 0;
+    int i = a.size() - 1;
+    int j = b.size() - 1;
+
+    while (i >= 0 || j >= 0 || carry) {
+        int sum = carry;
+        if (i >= 0) sum += a[i--] - '0';
+        if (j >= 0) sum += b[j--] - '0';
+        result.push_back((sum % 10) + '0');
+        carry = sum / 10;
+    }
+
+    std::reverse(result.begin(), result.end());
+    return result;
+}
+
+static std::string subtractIntegerStrings(const std::string& a, const std::string& b) {
+    // Simple implementation: a >= b
+    std::string result;
+    int borrow = 0;
+    int i = a.size() - 1;
+    int j = b.size() - 1;
+
+    while (i >= 0) {
+        int diff = (a[i] - '0') - borrow;
+        if (j >= 0) diff -= (b[j] - '0');
+
+        if (diff < 0) {
+            diff += 10;
+            borrow = 1;
+        } else {
+            borrow = 0;
+        }
+
+        result.push_back(diff + '0');
+        i--;
+        j--;
+    }
+
+    // Remove leading zeros
+    while (result.size() > 1 && result.back() == '0') {
+        result.pop_back();
+    }
+
+    std::reverse(result.begin(), result.end());
+    return result;
+}
+
+static int compareIntegerStrings(const std::string& a, const std::string& b) {
+    if (a.size() != b.size()) {
+        return a.size() < b.size() ? -1 : 1;
+    }
+    return a.compare(b);
+}
 
 // Helper methods implementation
 std::any EvalVisitor::getVariable(const std::string& name) {
@@ -360,7 +427,23 @@ std::any EvalVisitor::visitArith_expr(Python3Parser::Arith_exprContext *ctx) {
         std::string op = ctx->addorsub_op(i)->getText();
 
         if (op == "+") {
-            if (result.type() == typeid(double) || right.type() == typeid(double)) {
+            // Check if both are integers (stored as strings)
+            bool leftIsInt = false, rightIsInt = false;
+            std::string leftStr, rightStr;
+
+            if (result.type() == typeid(std::string)) {
+                leftStr = std::any_cast<std::string>(result);
+                leftIsInt = !leftStr.empty() && leftStr.find_first_not_of("0123456789") == std::string::npos;
+            }
+            if (right.type() == typeid(std::string)) {
+                rightStr = std::any_cast<std::string>(right);
+                rightIsInt = !rightStr.empty() && rightStr.find_first_not_of("0123456789") == std::string::npos;
+            }
+
+            if (leftIsInt && rightIsInt) {
+                // Both are integer strings, do big integer addition
+                result = addIntegerStrings(leftStr, rightStr);
+            } else if (result.type() == typeid(double) || right.type() == typeid(double)) {
                 result = anyToDouble(result) + anyToDouble(right);
             } else if (result.type() == typeid(std::string) || right.type() == typeid(std::string)) {
                 result = anyToString(result) + anyToString(right);
